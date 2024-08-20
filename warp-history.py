@@ -164,13 +164,6 @@ def main():
     # Write this script to the shell RC file
     write_this_script_to_rc_file(args.shell)
 
-    print(
-        f"""
-Number of commands written to {args.shell} history: {len(history)}
-Please restart your shell to apply the changes.
-"""
-    )
-
 
 if __name__ == "__main__":
     main()
