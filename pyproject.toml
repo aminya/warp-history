@@ -1,0 +1,15 @@
+[tool.poetry]
+name = "warp-history"
+version = "0.1.0"
+description = "Allow the warp terminal to search through the history properly"
+authors = ["Amin Yahyaabadi <aminyahyaabadi74@gmail.com>"]
+readme = "README.md"
+license = "MIT"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
