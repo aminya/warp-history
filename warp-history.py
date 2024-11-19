@@ -9,12 +9,20 @@ import json
 from collections import OrderedDict
 import argparse
 import tempfile
+import platform
 
 
 def get_warp_history(history: OrderedDict[str, datetime]) -> None:
+    db_path: str = ""
     try:
         # Define the paths
-        db_path = os.path.expanduser("~/.local/state/warp-terminal/warp.sqlite")
+        if platform.system() == "Linux":
+            db_path = os.path.expanduser("~/.local/share/warp-terminal/warp.sqlite")
+        elif platform.system() == "Darwin":  # macOS
+            db_path = os.path.expanduser("~/Library/Application Support/dev.warp.Warp-Stable/warp.sqlite")
+        else:
+            print("Unsupported operating system.")
+            return
 
         # Connect to the SQLite database
         conn = sqlite3.connect(db_path)
