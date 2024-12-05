@@ -57,7 +57,7 @@ def get_warp_history(history: OrderedDict[str, datetime]) -> None:
 def populate_mcfly_history(history_path: str) -> None:
     # Check if the `mcfly` command is available
     if not shutil.which("mcfly"):
-        print("The `mcfly` command is not available.")
+        # print("The `mcfly` command is not available.")
         return
 
     # set MCFLY_HISTFILE to the history file path
@@ -81,7 +81,7 @@ def populate_mcfly_history(history_path: str) -> None:
 def get_mcfly_history(history_path: str, history: OrderedDict[str, datetime]) -> None:
     # Check if the `mcfly` command is available
     if not shutil.which("mcfly"):
-        print("The `mcfly` command is not available.")
+        # print("The `mcfly` command is not available.")
         return
 
     stdout: str = "[]"
