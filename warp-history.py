@@ -19,7 +19,7 @@ def get_warp_history(history: OrderedDict[str, datetime]) -> None:
         if platform.system() == "Linux":
             db_path = os.path.expanduser("~/.local/share/warp-terminal/warp.sqlite")
         elif platform.system() == "Darwin":  # macOS
-            db_path = os.path.expanduser("~/Library/Application Support/dev.warp.Warp-Stable/warp.sqlite")
+            db_path = os.path.expanduser("~/Library/Group Containers/2BBY89MBSN.dev.warp/Library/Application Support/dev.warp.Warp-Stable/warp.sqlite")
         else:
             print("Unsupported operating system.")
             return
