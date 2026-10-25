@@ -187,6 +187,9 @@ def get_shell():
         if shell_path.endswith("zsh"):
             return "zsh"
 
+        if getenv("ZSH_VERSION"):
+            return "zsh"
+
         # Method 2: Check parent process name (more reliable)
         # Works on Unix-like systems
         if sys.platform != "win32":
