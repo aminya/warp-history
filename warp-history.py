@@ -1,43 +1,56 @@
 #!/usr/bin/env python3
 
-from datetime import datetime
+import argparse
+import glob
+import json
+import os
+import platform
 import shutil
 import sqlite3
-import os
 import subprocess
-import json
-from collections import OrderedDict
-import argparse
 import tempfile
-import platform
+from collections import OrderedDict
+from datetime import datetime
+from itertools import chain
+from pathlib import Path
+
+other_globs = ["~/.config/Warp/warp.db", "~/.local/share/warp-terminal/warp.sqlite"]
+
+macos_globs = [
+    "~/Library/Application Support/Warp/warp.db",
+    "~/Library/Application Support/Warp/databases/warp.sqlite",
+    "/Users/*/Library/Group Containers/*.dev.warp/Library/Application Support/dev.warp.Warp-Stable/warp.sqlite",
+]
 
 
-def get_warp_history(history: OrderedDict[str, datetime]) -> None:
-    db_path: str = ""
-    try:
-        # Define the paths
-        if platform.system() == "Linux":
-            db_path = os.path.expanduser("~/.local/share/warp-terminal/warp.sqlite")
-        elif platform.system() == "Darwin":  # macOS
-            db_path = os.path.expanduser("~/Library/Group Containers/2BBY89MBSN.dev.warp/Library/Application Support/dev.warp.Warp-Stable/warp.sqlite")
-        else:
-            print("Unsupported operating system.")
-            return
+def find_path_in_globs(globs: list[str]):
+    for dir in chain.from_iterable([glob.glob(g) for g in globs]):
+        return Path(os.path.expanduser(dir))
+    return None
 
-        # Connect to the SQLite database
-        conn = sqlite3.connect(db_path)
+
+def get_warp_history():
+    db_path: Path | None = None
+
+    # History
+    history: OrderedDict[str, datetime] = OrderedDict()
+
+    # Define the paths
+    if platform.system() == "Darwin":  # macOS
+        db_path = find_path_in_globs(macos_globs)
+    else:
+        db_path = find_path_in_globs(other_globs)
+
+    if db_path is None or not db_path.exists():
+        raise FileNotFoundError(f"Warp database not found: {db_path}")
+
+    # Connect to the SQLite database
+    with sqlite3.connect(db_path) as conn:
         cursor = conn.cursor()
 
         # Execute the query to select unique commands and their start timestamps
         cursor.execute("SELECT DISTINCT command, start_ts FROM commands")
         commands = cursor.fetchall()
-
-        # Close the database connection
-        conn.close()
-
-    except Exception as e:
-        print(f"Failed to read Warp history from {db_path}: {e}")
-        return
 
     # Parse the start_ts and store in the history dictionary
     for command, start_ts in commands:
@@ -52,6 +65,8 @@ def get_warp_history(history: OrderedDict[str, datetime]) -> None:
         except Exception as e:
             print(f"Failed to parse timestamp {start_ts}: {e}")
             continue
+
+    return history
 
 
 def populate_mcfly_history(history_path: str) -> None:
@@ -115,7 +130,7 @@ def write_history_to_shell_history(
 
     # Append the commands to the shell history file
     with open(history_path, "a") as history_file:
-        for command in history.keys():
+        for command in history:
             history_file.write(command)
             history_file.write("\n")
 
@@ -131,8 +146,8 @@ def write_this_script_to_rc_file(shell: str) -> None:
 
     # Append this script to the shell RC file
     with open(rc_path, "a") as rc_file:
-        rc_file.write("# Append Warp and McFly history to shell history\n")
-        rc_file.write(f"python3 {__file__}\n")
+        rc_file.write("\n# Append Warp and McFly history to shell history\n")
+        rc_file.write(f"test -f {__file__} && python3 {__file__}\n")
 
 
 def parse_args():
@@ -154,14 +169,13 @@ def main():
     # Parse command-line arguments
     args = parse_args()
 
-    # History
-    history = OrderedDict()
-
     # Define the path to the shell history file
     history_path = os.path.expanduser(f"~/.{args.shell}_history")
 
     # Get commands from Warp
-    get_warp_history(history)
+    history = get_warp_history()
+    if not history:
+        return
 
     # Get commands from McFly
     get_mcfly_history(history_path, history)
