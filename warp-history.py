@@ -144,7 +144,7 @@ def write_history_to_shell_history(
     )
 
     # recent commands
-    recent_commands = list(history.keys())[-10000:]
+    recent_commands = [command for command, _ in history.items()][-2500:]
 
     # Append the commands to the shell history file
     with open(history_path, "w") as history_file:
