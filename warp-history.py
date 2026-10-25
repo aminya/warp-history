@@ -67,14 +67,14 @@ def get_warp_histories():
     return history
 
 
-def populate_mcfly_history(history_path: str) -> None:
+def populate_mcfly_history(history_path: Path) -> None:
     # Check if the `mcfly` command is available
     if not shutil.which("mcfly"):
         # print("The `mcfly` command is not available.")
         return
 
     # set MCFLY_HISTFILE to the history file path
-    os.environ["MCFLY_HISTFILE"] = history_path
+    os.environ["MCFLY_HISTFILE"] = str(history_path)
 
     # Create a temporary file for McFly history
     mcfly_history = os.getenv("MCFLY_HISTORY")
@@ -91,7 +91,7 @@ def populate_mcfly_history(history_path: str) -> None:
         mcfly_file.writelines(lines)
 
 
-def get_mcfly_history(history_path: str, history: OrderedDict[str, datetime]) -> None:
+def get_mcfly_history(history_path: Path, history: OrderedDict[str, datetime]) -> None:
     # Check if the `mcfly` command is available
     if not shutil.which("mcfly"):
         # print("The `mcfly` command is not available.")
@@ -120,11 +120,11 @@ def get_mcfly_history(history_path: str, history: OrderedDict[str, datetime]) ->
 
 
 def write_history_to_shell_history(
-    history_path: str, history: OrderedDict[str, datetime]
+    history_path: Path, history: OrderedDict[str, datetime]
 ) -> None:
     # Backup the existing shell history file
     if os.path.exists(history_path):
-        os.rename(history_path, history_path + ".bak")
+        os.rename(history_path, str(history_path) + ".bak")
 
     # Append the commands to the shell history file
     with open(history_path, "a") as history_file:
@@ -168,7 +168,7 @@ def main():
     args = parse_args()
 
     # Define the path to the shell history file
-    history_path = os.path.expanduser(f"~/.{args.shell}_history")
+    history_path = Path(os.path.expanduser(f"~/.{args.shell}_history"))
 
     # Get commands from Warp
     history = get_warp_histories()
