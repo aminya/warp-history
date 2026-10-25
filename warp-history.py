@@ -11,6 +11,8 @@ import tempfile
 from collections import OrderedDict
 from datetime import datetime
 from itertools import chain
+from os import getenv
+from os.path import expanduser
 from pathlib import Path
 
 db_globs = [
@@ -26,7 +28,7 @@ db_globs = [
 
 
 def find_path_in_globs(globs: list[str]):
-    paths = chain.from_iterable([glob.glob(g) for g in globs])
+    paths = chain.from_iterable([glob.glob(expanduser(g)) for g in globs])
     return [Path(p) for p in paths]
 
 
@@ -34,7 +36,7 @@ def get_warp_db_paths():
     return find_path_in_globs(db_globs)
 
 
-def get_warp_history(history: OrderedDict[str, datetime], db_path: Path):
+def merge_warp_history(history: OrderedDict[str, datetime], db_path: Path):
     # Connect to the SQLite database
     with sqlite3.connect(db_path) as conn:
         cursor = conn.cursor()
@@ -57,14 +59,11 @@ def get_warp_history(history: OrderedDict[str, datetime], db_path: Path):
             print(f"Failed to parse timestamp {start_ts}: {e}")
             continue
 
-    return history
 
-
-def get_warp_histories():
-    history: OrderedDict[str, datetime] = OrderedDict()
-    for db_path in get_warp_db_paths():
-        history = get_warp_history(history, db_path)
-    return history
+def merge_warp_histories(history: OrderedDict[str, datetime]):
+    db_paths = get_warp_db_paths()
+    for db_path in db_paths:
+        merge_warp_history(history, db_path)
 
 
 def populate_mcfly_history(history_path: Path) -> None:
@@ -77,7 +76,7 @@ def populate_mcfly_history(history_path: Path) -> None:
     os.environ["MCFLY_HISTFILE"] = str(history_path)
 
     # Create a temporary file for McFly history
-    mcfly_history = os.getenv("MCFLY_HISTORY")
+    mcfly_history = getenv("MCFLY_HISTORY")
     if not mcfly_history:
         with tempfile.NamedTemporaryFile(
             delete=False, prefix="mcfly.", dir="/tmp"
@@ -86,12 +85,17 @@ def populate_mcfly_history(history_path: Path) -> None:
         os.environ["MCFLY_HISTORY"] = mcfly_history
 
     # Populate McFly's temporary history file from recent commands in the shell's primary HISTFILE
-    with open(history_path, "r") as histfile, open(mcfly_history, "w") as mcfly_file:
-        lines = histfile.readlines()[-100:]  # Get the last 100 lines
+    with (
+        history_path.open("r") as histfile,
+        Path(mcfly_history).open("w") as mcfly_file,
+    ):
+        lines = histfile.readlines()
         mcfly_file.writelines(lines)
 
 
-def get_mcfly_history(history_path: Path, history: OrderedDict[str, datetime]) -> None:
+def merge_mcfly_history(
+    history_path: Path, history: OrderedDict[str, datetime]
+) -> None:
     # Check if the `mcfly` command is available
     if not shutil.which("mcfly"):
         # print("The `mcfly` command is not available.")
@@ -122,12 +126,9 @@ def get_mcfly_history(history_path: Path, history: OrderedDict[str, datetime]) -
 def write_history_to_shell_history(
     history_path: Path, history: OrderedDict[str, datetime]
 ) -> None:
-    # Backup the existing shell history file
-    if os.path.exists(history_path):
-        os.rename(history_path, str(history_path) + ".bak")
 
     # Append the commands to the shell history file
-    with open(history_path, "a") as history_file:
+    with open(history_path, "w") as history_file:
         for command in history:
             history_file.write(command)
             history_file.write("\n")
@@ -135,7 +136,7 @@ def write_history_to_shell_history(
 
 def write_this_script_to_rc_file(shell: str) -> None:
     # Define the path to the shell RC file
-    rc_path = os.path.expanduser(f"~/.{shell}rc")
+    rc_path = Path(expanduser(f"~/.{shell}rc"))
 
     # if the script is already appended, do not append it again
     with open(rc_path, "r") as f:
@@ -143,9 +144,35 @@ def write_this_script_to_rc_file(shell: str) -> None:
             return
 
     # Append this script to the shell RC file
-    with open(rc_path, "a") as rc_file:
+    with rc_path.open("a") as rc_file:
         rc_file.write("\n# Append Warp and McFly history to shell history\n")
         rc_file.write(f"test -f {__file__} && python3 {__file__}\n")
+
+
+def create_shell_history(args):
+    # Define the path to the shell history file
+    history_path = Path(expanduser(f"~/.{args.shell}_history"))
+
+    # Backup the existing shell history file
+    if history_path.exists():
+        metadata = history_path.stat()
+        history_path.rename(str(history_path) + ".bak")
+        history_path.touch()
+    else:
+        history_path.touch()
+        metadata = history_path.stat()
+
+    modified_datetime = datetime.fromtimestamp(metadata.st_mtime)
+
+    history: OrderedDict[str, datetime] = OrderedDict()
+    with (
+        history_path.open("r") as histfile,
+    ):
+        shell_lines = histfile.readlines()
+        for line in shell_lines:
+            if not line in history:
+                history[line] = modified_datetime
+    return history_path, history
 
 
 def parse_args():
@@ -153,12 +180,15 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Write Warp and McFly history to shell history."
     )
+
+    # get default shell
+    shell = os.getenv("SHELL", "bash").split("/")[-1]
+
     parser.add_argument(
         "--shell",
         type=str,
-        default="bash",
-        choices=["bash", "zsh"],
-        help="Specify the shell type (bash or zsh).",
+        default=shell,
+        help="Specify the shell type (bash, zsh, etc).",
     )
     return parser.parse_args()
 
@@ -167,22 +197,21 @@ def main():
     # Parse command-line arguments
     args = parse_args()
 
-    # Define the path to the shell history file
-    history_path = Path(os.path.expanduser(f"~/.{args.shell}_history"))
+    # Write this script to the shell RC file
+    write_this_script_to_rc_file(args.shell)
+
+    history_path, history = create_shell_history(args)
 
     # Get commands from Warp
-    history = get_warp_histories()
+    merge_warp_histories(history)
     if not history:
         return
 
     # Get commands from McFly
-    get_mcfly_history(history_path, history)
+    merge_mcfly_history(history_path, history)
 
     # Write the combined history to the specified shell history
     write_history_to_shell_history(history_path, history)
-
-    # Write this script to the shell RC file
-    write_this_script_to_rc_file(args.shell)
 
 
 if __name__ == "__main__":
