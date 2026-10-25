@@ -8,13 +8,13 @@ import shutil
 import sqlite3
 import subprocess
 import sys
-import tempfile
 from collections import OrderedDict
 from datetime import UTC, datetime
 from itertools import chain
 from os import getenv
 from os.path import expanduser
 from pathlib import Path
+import tempfile
 
 db_globs = [
     "~/.local/state/warp-terminal/warp.sqlite",
@@ -78,7 +78,7 @@ def merge_warp_histories(history: OrderedDict[str, datetime]):
         merge_warp_history(history, db_path)
 
 
-def populate_mcfly_history(history_path: Path) -> None:
+def temporary_mcfly_history(history_path: Path) -> None:
     # Check if the `mcfly` command is available
     if not shutil.which("mcfly"):
         # print("The `mcfly` command is not available.")
@@ -96,14 +96,6 @@ def populate_mcfly_history(history_path: Path) -> None:
             mcfly_history = tmpfile.name
         os.environ["MCFLY_HISTORY"] = mcfly_history
 
-    # Populate McFly's temporary history file from recent commands in the shell's primary HISTFILE
-    with (
-        history_path.open("r") as histfile,
-        Path(mcfly_history).open("w") as mcfly_file,
-    ):
-        lines = histfile.readlines()
-        mcfly_file.writelines(lines)
-
 
 def merge_mcfly_history(
     history_path: Path, history: OrderedDict[str, datetime]
@@ -115,8 +107,8 @@ def merge_mcfly_history(
 
     stdout: str = "[]"
     try:
-        populate_mcfly_history(history_path)
-
+        temporary_mcfly_history(history_path)
+        
         # Run the `mcfly dump` command and capture the output
         result = subprocess.run(
             ["mcfly", "dump"], stdout=subprocess.PIPE, text=True, check=True
@@ -253,11 +245,11 @@ def main():
 
     # Get commands from Warp
     merge_warp_histories(history)
-    if not history:
-        return
 
     # Get commands from McFly
     merge_mcfly_history(history_path, history)
+    if not history:
+        return
 
     # Write the combined history to the specified shell history
     write_history_to_shell_history(history_path, history)
