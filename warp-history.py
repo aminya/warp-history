@@ -146,7 +146,9 @@ def write_this_script_to_rc_file(shell: str) -> None:
     # Append this script to the shell RC file
     with rc_path.open("a") as rc_file:
         rc_file.write("\n# Append Warp and McFly history to shell history\n")
-        rc_file.write(f"test -f {__file__} && python3 {__file__}\n")
+        interactivity = '[[ "$-" == *i* ]]'
+        existence = f"test -f {__file__}"
+        rc_file.write(f"{interactivity} && {existence} && python3 {__file__}\n")
 
 
 def create_shell_history(args):
@@ -181,8 +183,11 @@ def parse_args():
         description="Write Warp and McFly history to shell history."
     )
 
+    # detect zsh via ZSH_VERSION
+    is_zsh = getenv("ZSH_VERSION") is not None
+
     # get default shell
-    shell = os.getenv("SHELL", "bash").split("/")[-1]
+    shell = "zsh" if is_zsh else getenv("SHELL", "bash").split("/")[-1]
 
     parser.add_argument(
         "--shell",
