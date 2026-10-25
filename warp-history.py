@@ -4,7 +4,6 @@ import argparse
 import glob
 import json
 import os
-import platform
 import shutil
 import sqlite3
 import subprocess
@@ -14,9 +13,12 @@ from datetime import datetime
 from itertools import chain
 from pathlib import Path
 
-other_globs = ["~/.config/Warp/warp.db", "~/.local/share/warp-terminal/warp.sqlite"]
-
-macos_globs = [
+db_globs = [
+    "~/.local/state/warp-terminal/warp.sqlite",
+    "~/.config/Warp/warp.sqlite",
+    "~/.local/share/warp-terminal/warp.sqlite",
+    "~/.config/Warp/warp.db",
+    "~/Library/Application Support/Warp/warp.sqlite",
     "~/Library/Application Support/Warp/warp.db",
     "~/Library/Application Support/Warp/databases/warp.sqlite",
     "/Users/*/Library/Group Containers/*.dev.warp/Library/Application Support/dev.warp.Warp-Stable/warp.sqlite",
@@ -24,26 +26,15 @@ macos_globs = [
 
 
 def find_path_in_globs(globs: list[str]):
-    for dir in chain.from_iterable([glob.glob(g) for g in globs]):
-        return Path(os.path.expanduser(dir))
-    return None
+    paths = chain.from_iterable([glob.glob(g) for g in globs])
+    return [Path(p) for p in paths]
 
 
-def get_warp_history():
-    db_path: Path | None = None
+def get_warp_db_paths():
+    return find_path_in_globs(db_globs)
 
-    # History
-    history: OrderedDict[str, datetime] = OrderedDict()
 
-    # Define the paths
-    if platform.system() == "Darwin":  # macOS
-        db_path = find_path_in_globs(macos_globs)
-    else:
-        db_path = find_path_in_globs(other_globs)
-
-    if db_path is None or not db_path.exists():
-        raise FileNotFoundError(f"Warp database not found: {db_path}")
-
+def get_warp_history(history: OrderedDict[str, datetime], db_path: Path):
     # Connect to the SQLite database
     with sqlite3.connect(db_path) as conn:
         cursor = conn.cursor()
@@ -69,6 +60,13 @@ def get_warp_history():
     return history
 
 
+def get_warp_histories():
+    history: OrderedDict[str, datetime] = OrderedDict()
+    for db_path in get_warp_db_paths():
+        history = get_warp_history(history, db_path)
+    return history
+
+
 def populate_mcfly_history(history_path: str) -> None:
     # Check if the `mcfly` command is available
     if not shutil.which("mcfly"):
@@ -88,9 +86,9 @@ def populate_mcfly_history(history_path: str) -> None:
         os.environ["MCFLY_HISTORY"] = mcfly_history
 
     # Populate McFly's temporary history file from recent commands in the shell's primary HISTFILE
-    with open(history_path, "r") as histfile, open(mcfly_history, "w") as mcflyfile:
+    with open(history_path, "r") as histfile, open(mcfly_history, "w") as mcfly_file:
         lines = histfile.readlines()[-100:]  # Get the last 100 lines
-        mcflyfile.writelines(lines)
+        mcfly_file.writelines(lines)
 
 
 def get_mcfly_history(history_path: str, history: OrderedDict[str, datetime]) -> None:
@@ -173,7 +171,7 @@ def main():
     history_path = os.path.expanduser(f"~/.{args.shell}_history")
 
     # Get commands from Warp
-    history = get_warp_history()
+    history = get_warp_histories()
     if not history:
         return
 
