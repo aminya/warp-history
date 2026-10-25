@@ -10,7 +10,7 @@ import subprocess
 import sys
 import tempfile
 from collections import OrderedDict
-from datetime import datetime
+from datetime import UTC, datetime
 from itertools import chain
 from os import getenv
 from os.path import expanduser
@@ -26,6 +26,23 @@ db_globs = [
     "~/Library/Application Support/Warp/databases/warp.sqlite",
     "/Users/*/Library/Group Containers/*.dev.warp/Library/Application Support/dev.warp.Warp-Stable/warp.sqlite",
 ]
+
+
+def warp_datetime(start_ts: str | None):
+    if start_ts is None:
+        start_ts = "1970-01-01 00:00:00.000000"
+
+    # Truncate nanoseconds to microseconds
+    start_ts = start_ts[:26]
+    return datetime.strptime(start_ts, "%Y-%m-%d %H:%M:%S.%f")
+
+
+def mcfly_datetime(when_run: str):
+    return datetime.fromisoformat(when_run)
+
+
+def histfile_datetime(metadata: os.stat_result):
+    return datetime.fromtimestamp(metadata.st_mtime, UTC)
 
 
 def find_path_in_globs(globs: list[str]):
@@ -49,13 +66,7 @@ def merge_warp_history(history: OrderedDict[str, datetime], db_path: Path):
     # Parse the start_ts and store in the history dictionary
     for command, start_ts in commands:
         try:
-            if start_ts is None:
-                start_ts = "1970-01-01 00:00:00.000000"
-
-            # Truncate nanoseconds to microseconds
-            start_ts = start_ts[:26]
-            start_ts_dt = datetime.strptime(start_ts, "%Y-%m-%d %H:%M:%S.%f")
-            history[command] = start_ts_dt
+            history[command] = warp_datetime(start_ts)
         except Exception as e:
             print(f"Failed to parse timestamp {start_ts}: {e}")
             continue
@@ -120,17 +131,24 @@ def merge_mcfly_history(
 
     # Extract the `cmd` and `when_run` properties and store them in the given history dictionary
     for command in commands_json:
-        when_run = datetime.fromisoformat(command["when_run"])
+        when_run = mcfly_datetime(command["when_run"])
         history[command["cmd"]] = when_run
 
 
 def write_history_to_shell_history(
     history_path: Path, history: OrderedDict[str, datetime]
 ) -> None:
+    # Normalize local naive timestamps and offset-aware timestamps before sorting.
+    history = OrderedDict(
+        sorted(history.items(), key=lambda item: item[1].astimezone(UTC))
+    )
+
+    # recent commands
+    recent_commands = list(history.keys())[-10000:]
 
     # Append the commands to the shell history file
     with open(history_path, "w") as history_file:
-        for command in history:
+        for command in recent_commands:
             history_file.write(command)
             history_file.write("\n")
 
@@ -165,7 +183,7 @@ def create_shell_history(args):
         history_path.touch()
         metadata = history_path.stat()
 
-    modified_datetime = datetime.fromtimestamp(metadata.st_mtime)
+    modified_datetime = histfile_datetime(metadata)
 
     history: OrderedDict[str, datetime] = OrderedDict()
     with (
