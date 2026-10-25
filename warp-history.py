@@ -7,6 +7,7 @@ import os
 import shutil
 import sqlite3
 import subprocess
+import sys
 import tempfile
 from collections import OrderedDict
 from datetime import datetime
@@ -177,23 +178,45 @@ def create_shell_history(args):
     return history_path, history
 
 
+def get_shell():
+    env_shell = getenv("SHELL", "bash").split("/")[-1]
+
+    try:
+        # Method 1: Check the SHELL environment variable
+        shell_path = env_shell
+        if shell_path.endswith("zsh"):
+            return "zsh"
+
+        # Method 2: Check parent process name (more reliable)
+        # Works on Unix-like systems
+        if sys.platform != "win32":
+            try:
+                parent_pid = os.getppid()
+                proc_name = subprocess.check_output(
+                    ["ps", "-p", str(parent_pid), "-o", "comm="], text=True
+                ).strip()
+                if proc_name.lower() == "zsh":
+                    return "zsh"
+            except Exception:
+                pass
+
+        return env_shell
+    except Exception as e:
+        print(f"Error detecting shell: {e}")
+        return env_shell
+
+
 def parse_args():
     # Parse command-line arguments
     parser = argparse.ArgumentParser(
         description="Write Warp and McFly history to shell history."
     )
 
-    # detect zsh via ZSH_VERSION
-    is_zsh = getenv("ZSH_VERSION") is not None
-
-    # get default shell
-    shell = "zsh" if is_zsh else getenv("SHELL", "bash").split("/")[-1]
-
     parser.add_argument(
         "--shell",
         type=str,
-        default=shell,
-        help="Specify the shell type (bash, zsh, etc).",
+        default=get_shell(),
+        help="Specify the shell type (automatically detected).",
     )
     return parser.parse_args()
 
