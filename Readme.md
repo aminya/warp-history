@@ -1,6 +1,6 @@
 # Warp and McFly History to Shell History
 
-This tool extracts command history from Warp and McFly and writes it to your shell's history file (either Bash or Zsh).
+This tool extracts command history from Warp and McFly, writes it to your shell's history file (either Bash or Zsh), and adds McFly commands to Warp's history database.
 
 This allows you to have a unified command history across all your terminals and shell sessions.
 
@@ -11,6 +11,7 @@ It also fixes [the issue](https://github.com/cantino/mcfly/issues/435) where War
 - Extracts command history from Warp terminal.
 - Extracts command history from McFly.
 - Writes the combined history to the specified shell history file.
+- Inserts McFly commands into each discovered Warp history database without duplicating already-imported entries.
 - Backs up the existing shell history file before writing.
 
 ## Requirements

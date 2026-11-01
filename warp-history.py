@@ -97,18 +97,15 @@ def temporary_mcfly_history(history_path: Path) -> None:
         os.environ["MCFLY_HISTORY"] = mcfly_history
 
 
-def merge_mcfly_history(
-    history_path: Path, history: OrderedDict[str, datetime]
-) -> None:
+def get_mcfly_history(history_path: Path) -> list[tuple[str, datetime]]:
     # Check if the `mcfly` command is available
     if not shutil.which("mcfly"):
-        # print("The `mcfly` command is not available.")
-        return
+        return []
 
     stdout: str = "[]"
     try:
         temporary_mcfly_history(history_path)
-        
+
         # Run the `mcfly dump` command and capture the output
         result = subprocess.run(
             ["mcfly", "dump"], stdout=subprocess.PIPE, text=True, check=True
@@ -116,15 +113,41 @@ def merge_mcfly_history(
         stdout = result.stdout
     except subprocess.CalledProcessError as e:
         print(f"Failed to read McFly history: {e}")
-        return
+        return []
 
     # Parse the JSON output
     commands_json = json.loads(stdout)
 
-    # Extract the `cmd` and `when_run` properties and store them in the given history dictionary
-    for command in commands_json:
-        when_run = mcfly_datetime(command["when_run"])
-        history[command["cmd"]] = when_run
+    return [
+        (command["cmd"], mcfly_datetime(command["when_run"]))
+        for command in commands_json
+    ]
+
+
+def merge_mcfly_history(
+    commands: list[tuple[str, datetime]], history: OrderedDict[str, datetime]
+) -> None:
+    for command, when_run in commands:
+        history[command] = when_run
+
+
+def insert_mcfly_history_into_warp(commands: list[tuple[str, datetime]]) -> None:
+    for db_path in get_warp_db_paths():
+        with sqlite3.connect(db_path) as conn:
+            for command, when_run in commands:
+                if when_run.tzinfo is not None:
+                    when_run = when_run.astimezone().replace(tzinfo=None)
+                start_ts = when_run.isoformat(sep=" ", timespec="microseconds")
+                conn.execute(
+                    """
+                    INSERT INTO commands (command, start_ts)
+                    SELECT ?, ?
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM commands WHERE command = ? AND start_ts = ?
+                    )
+                    """,
+                    (command, start_ts, command, start_ts),
+                )
 
 
 def write_history_to_shell_history(
@@ -247,7 +270,9 @@ def main():
     merge_warp_histories(history)
 
     # Get commands from McFly
-    merge_mcfly_history(history_path, history)
+    mcfly_commands = get_mcfly_history(history_path)
+    merge_mcfly_history(mcfly_commands, history)
+    insert_mcfly_history_into_warp(mcfly_commands)
     if not history:
         return
 
